@@ -732,6 +732,7 @@ configure_minion() {
 		'helix')
 			echo "master: '$HOSTNAME'" >> "$minion_config"
 			;;
+		## TODO - Should `air` gap be in here...
 		'manager' | 'eval' | 'managersearch' | 'standalone' | 'import')
 			printf '%s\n'\
 				"master: '$HOSTNAME'"\
@@ -789,6 +790,7 @@ configure_ntp() {
 
 	systemctl enable chronyd
 	systemctl restart chronyd
+	## TODO - `systemctl --now enable chronyd`
 
 	# Tell the chrony daemon to sync time & update the system time
 	# Since these commands only make a call to chronyd, wait after each command to make sure the changes are made
@@ -1046,6 +1048,7 @@ create_repo() {
 
 detect_cloud() {
   echo "Testing if setup is running on a cloud instance..." | tee -a "$setup_log"
+  ## TODO - Learn more about the line below.
   if ( curl --fail -s -m 5 http://169.254.169.254/latest/meta-data/instance-id > /dev/null ) || ( dmidecode -s bios-vendor | grep -q Google > /dev/null) || [ -f /var/log/waagent.log ]; then export is_cloud="true"; fi
 }
 
@@ -1073,6 +1076,8 @@ detect_os() {
 			OSVER=bionic
 		elif grep -q "UBUNTU_CODENAME=xenial" /etc/os-release; then
 			OSVER=xenial
+		elif grep -q "UBUNTU_CODENAME=focal" /etc/os-release; then
+			OSVER=focal
 		else
 			echo "We do not support your current version of Ubuntu."
 			exit 1
@@ -1115,6 +1120,7 @@ installer_prereq_packages() {
 		if ! command -v nmcli > /dev/null 2>&1; then
 			retry 50 10 "apt-get -y install network-manager" >> "$setup_log" 2>&1 || exit 1
 			{
+				## TODO use `systemctl --now enable NetworkManager`
 				systemctl enable NetworkManager
 				systemctl start NetworkManager
 			} >> "$setup_log" 2<&1
@@ -1175,6 +1181,7 @@ docker_install() {
 				;;
 		esac 
 		if [ $OSVER != "xenial" ]; then
+			## TODO - focal
 			retry 50 10 "apt-get -y install docker-ce python3-docker" >> "$setup_log" 2>&1 || exit 1
 		else
 			retry 50 10 "apt-get -y install docker-ce python-docker" >> "$setup_log" 2>&1 || exit 1
@@ -1185,6 +1192,7 @@ docker_install() {
 		echo "Restarting Docker";
 		systemctl restart docker;
 		systemctl enable docker;
+		## TODO - use `systemctl --now enable docker`
 	} >> "$setup_log" 2>&1
 }
 
@@ -1379,7 +1387,7 @@ fireeye_pillar() {
 
 # Generate Firewall Templates
 firewall_generate_templates() {
-
+	## TODO - sudo ufw status
 	local firewall_pillar_path=$local_salt_dir/salt/firewall
 	mkdir -p "$firewall_pillar_path"
    
@@ -1392,7 +1400,6 @@ firewall_generate_templates() {
 }
 
 fleet_pillar() {
-
 	local pillar_file="$temp_install_dir"/pillar/minions/"$MINION_ID".sls
 
 	# Create the fleet pillar
@@ -1403,7 +1410,7 @@ fleet_pillar() {
 		"" > "$pillar_file"
 }
 
-generate_passwords(){
+generate_passwords() {
   # Generate Random Passwords for Things
   MYSQLPASS=$(get_random_value)
   PLAYBOOKDBPASS=$(get_random_value)
@@ -2070,19 +2077,21 @@ saltify() {
 
 	# Install updates and Salt
 	if [ $OS = 'centos' ]; then
-		set_progress_str 6 'Installing various dependencies'
-		if [[ ! $is_iso ]]; then
-		  logCmd "yum -y install wget nmap-ncat"
-		fi 
+	  set_progress_str 6 'Installing various dependencies'
+	  if [[ ! $is_iso ]]; then
+	    logCmd "yum -y install wget nmap-ncat"
+	  fi 
 		case "$install_type" in
 			'MANAGER' | 'EVAL' | 'MANAGERSEARCH' | 'FLEET' | 'HELIXSENSOR' | 'STANDALONE'| 'IMPORT')
 				reserve_group_ids >> "$setup_log" 2>&1
 				if [[ ! $is_iso ]]; then
 				  logCmd "yum -y install sqlite argon2 curl mariadb-devel"
 				fi 
+				## TODO - Does this need to be in a 'CentOS' case statement? [SEE LINE 2126]
 				# Download Ubuntu Keys in case manager updates = 1
 				mkdir -p /opt/so/gpg >> "$setup_log" 2>&1
 				if [[ ! $is_airgap ]]; then
+				  ## TODO - Check OS Release
 				  logCmd "wget -q --inet4-only -O /opt/so/gpg/SALTSTACK-GPG-KEY.pub https://repo.saltstack.com/py3/ubuntu/18.04/amd64/archive/3003/SALTSTACK-GPG-KEY.pub"
 				  logCmd "wget -q --inet4-only -O /opt/so/gpg/docker.pub https://download.docker.com/linux/ubuntu/gpg"
 				  logCmd "wget -q --inet4-only -O /opt/so/gpg/GPG-KEY-WAZUH https://packages.wazuh.com/key/GPG-KEY-WAZUH"
@@ -2145,6 +2154,7 @@ saltify() {
 
 		case "$install_type" in
 			'FLEET')
+			        ## TODO - Does Focal need backports for python-mysqldb?
 				if [[ $OSVER != 'xenial' ]]; then
 					retry 50 10 "apt-get -y install python3-mysqldb" >> "$setup_log" 2>&1 || exit 1
 				else
@@ -2170,6 +2180,7 @@ saltify() {
 				# Get key and install wazuh
 				curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | apt-key add - >> "$setup_log" 2>&1
 				# Add repo
+				## TODO - Add 'wazuh' 4.X?
 				echo "deb https://packages.wazuh.com/3.x/apt/ stable main" > /etc/apt/sources.list.d/wazuh.list 2>> "$setup_log"
 				
 				retry 50 10 "apt-get update" >> "$setup_log" 2>&1 || exit 1
@@ -2196,6 +2207,9 @@ saltify() {
 		set_progress_str 8 'Installing salt-minion & python modules'
 		retry 50 10 "apt-get -y install salt-minion=3003+ds-1 salt-common=3003+ds-1" >> "$setup_log" 2>&1 || exit 1
 		retry 50 10 "apt-mark hold salt-minion salt-common" >> "$setup_log" 2>&1 || exit 1
+		## TODO - 
+		##if [[ $OSVER != 'focal' ]]; then
+		##	retry 50 10 "apt-get -y install python3-pip python3-dateutil python3-m2crypto python3-mysqldb python3-packaging" >> "$setup_log" 2>&1 || exit 1
 		if [[ $OSVER != 'xenial' ]]; then
 			retry 50 10 "apt-get -y install python3-pip python3-dateutil python3-m2crypto python3-mysqldb python3-packaging" >> "$setup_log" 2>&1 || exit 1
 		else
@@ -2346,6 +2360,7 @@ securityonion_repo() {
 		fi
 	else
 		echo "This is Ubuntu"
+		## TODO - Should repo list be checked?
 	fi
 }
 
@@ -2355,6 +2370,7 @@ set_base_heapsizes() {
 }
 
 set_network_dev_status_list() {
+	## TODO - Is NM even running(Ubuntu)?
 	readarray -t nmcli_dev_status_list <<< "$(nmcli -t -f DEVICE,STATE -c no dev status)"
 	export nmcli_dev_status_list
 }
