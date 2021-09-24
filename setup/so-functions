@@ -1172,6 +1172,7 @@ disable_auto_start() {
 	fi
 }
 
+# TODO - sysctl.conf Tuning
 disable_ipv6() {
 	# TODO - Revisit IPv6 Issues -CW
 	{
@@ -1182,7 +1183,37 @@ disable_ipv6() {
 	{
 		echo "net.ipv6.conf.all.disable_ipv6 = 1"
 		echo "net.ipv6.conf.default.disable_ipv6 = 1"
-		echo "net.ipv6.conf.lo.disable_ipv6 = 1" 
+		echo "net.ipv6.conf.lo.disable_ipv6 = 1"
+		# TODO - IPv6 Tuning CW
+		echo "net.ipv6.conf.default.router_solicitations = 0"
+		echo "net.ipv6.conf.default.accept_ra_rtr_pref = 0"
+		echo "net.ipv6.conf.default.accept_ra_pinfo = 0"
+		echo "net.ipv6.conf.default.accept_ra_defrtr = 0"
+		echo "net.ipv6.conf.default.autoconf = 0"
+		echo "net.ipv6.conf.default.dad_transmits = 0"
+		echo "net.ipv6.conf.default.max_addresses = 1"
+	} >> /etc/sysctl.conf
+
+	# TODO - Misc kernel tuning -CW
+	{
+		# TODO - # Increase TCP buffer -CW
+		echo "net.ipv4.tcp_rmem = 4096 87380 8388608
+		echo "net.ipv4.tcp_wmem = 4096 87380 8388608
+		# TODO - TCP auto tuning
+		echo "net.core.rmem_default = 1048576"
+		echo "net.core.rmem_max = 2097152"
+		echo "net.core.wmem_max = 2097152"
+		echo "net.core.netdev_max_backlog = 5000"
+		echo "net.ipv4.tcp_window_scaling = 1"
+		# Increase size of file handles and inode cache
+		echo "fs.file-max = 2097152"
+		# Turn down swapiness
+		echo "vm.swappiness = 10"
+		echo "vm.dirty_ratio = 60"
+		echo "vm.dirty_background_ratio = 2"
+		# TODO - Increase the number of TCP connections
+		echo "net.core.somaxconn = 65535"
+		echo "net.core.netdev_max_backlog = 65536"
 	} >> /etc/sysctl.conf
 }
 
