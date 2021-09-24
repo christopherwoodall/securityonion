@@ -1102,10 +1102,12 @@ detect_os() {
 
 	elif [ -f /etc/os-release ]; then
 		OS=ubuntu
-		if grep -q "UBUNTU_CODENAME=bionic" /etc/os-release; then
-			OSVER=bionic
-		elif grep -q "UBUNTU_CODENAME=xenial" /etc/os-release; then
-			OSVER=xenial
+		# TODO - Check if this works... -CW
+		OSVER=`lsb_release -cs`	
+		#if grep -q "UBUNTU_CODENAME=bionic" /etc/os-release; then
+		#	OSVER=bionic
+		#elif grep -q "UBUNTU_CODENAME=xenial" /etc/os-release; then
+		#	OSVER=xenial
 		else
 			echo "We do not support your current version of Ubuntu."
 			exit 1
@@ -1171,6 +1173,7 @@ disable_auto_start() {
 }
 
 disable_ipv6() {
+	# TODO - Revisit IPv6 Issues -CW
 	{
 		info "Disabling ipv6"
 		sysctl -w net.ipv6.conf.all.disable_ipv6=1
@@ -1197,20 +1200,29 @@ docker_install() {
 		} >> "$setup_log" 2>&1
 		
 	else
-		case "$install_type" in
-			'MANAGER' | 'EVAL' | 'STANDALONE' | 'MANAGERSEARCH' | 'IMPORT')
-				retry 50 10 "apt-get update" >> "$setup_log" 2>&1 || exit 1
-				;;
-			*)
-				retry 50 10 "apt-key add $temp_install_dir/gpg/docker.pub" >> "$setup_log" 2>&1 || exit 1
-				add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" >> "$setup_log" 2>&1
-				retry 50 10 "apt-get update" >> "$setup_log" 2>&1 || exit 1
-				;;
-		esac 
-		if [ $OSVER != "xenial" ]; then
-			retry 50 10 "apt-get -y install docker-ce python3-docker" >> "$setup_log" 2>&1 || exit 1
-		else
-			retry 50 10 "apt-get -y install docker-ce python-docker" >> "$setup_log" 2>&1 || exit 1
+		# TODO - Check if this works -CW
+		retry 50 10 "apt-key add $temp_install_dir/gpg/docker.pub" >> "$setup_log" 2>&1 || exit 1
+		# TODO - Check if keys and source have already been added. -CW
+		add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu "${OSVER}" stable" >> "$setup_log" 2>&1
+		retry 50 10 "apt-get update" >> "$setup_log" 2>&1 || exit 1
+		#case "$install_type" in
+		#	'MANAGER' | 'EVAL' | 'STANDALONE' | 'MANAGERSEARCH' | 'IMPORT')
+		#		retry 50 10 "apt-get update" >> "$setup_log" 2>&1 || exit 1
+		#		;;
+		#	*)
+		#		retry 50 10 "apt-key add $temp_install_dir/gpg/docker.pub" >> "$setup_log" 2>&1 || exit 1
+		#		add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" >> "$setup_log" 2>&1
+		#		retry 50 10 "apt-get update" >> "$setup_log" 2>&1 || exit 1
+		#		;;
+		#esac
+		
+		# TODO - Check if docker has already been installed, if so skip it - CW
+		if dpkg -l | grep -q docker-ce; then
+			if [ $OSVER != "xenial" ]; then
+				retry 50 10 "apt-get -y install docker-ce python3-docker" >> "$setup_log" 2>&1 || exit 1
+			else
+				retry 50 10 "apt-get -y install docker-ce python-docker" >> "$setup_log" 2>&1 || exit 1
+			fi
 		fi
 	fi
 	docker_registry
@@ -2040,6 +2052,8 @@ reinstall_init() {
 		local date_string
 		date_string=$(date +%s)
 
+		# TODO - Prune docker image -CW
+		
 		# Backup /opt/so since we'll be rebuilding this directory during setup
 		backup_dir /opt/so "$date_string"
 
@@ -2088,7 +2102,7 @@ remove_package() {
 		fi
 	else
 		if dpkg -l | grep -q "$package_name"; then
-			retry 50 10 "apt purge -y \"$package_name\""
+			retry 50 10 "apt purge -y \"${package_name}\""
 		fi
 	fi
 }
@@ -2117,9 +2131,12 @@ saltify() {
 				# Download Ubuntu Keys in case manager updates = 1
 				mkdir -p /opt/so/gpg >> "$setup_log" 2>&1
 				if [[ ! $is_airgap ]]; then
-				  logCmd "wget -q --inet4-only -O /opt/so/gpg/SALTSTACK-GPG-KEY.pub https://repo.saltstack.com/py3/ubuntu/18.04/amd64/archive/3003/SALTSTACK-GPG-KEY.pub"
-				  logCmd "wget -q --inet4-only -O /opt/so/gpg/docker.pub https://download.docker.com/linux/ubuntu/gpg"
-				  logCmd "wget -q --inet4-only -O /opt/so/gpg/GPG-KEY-WAZUH https://packages.wazuh.com/key/GPG-KEY-WAZUH"
+					#TODO - Check if this works -CW
+					OSREL=`lsb_release -rs`
+					logCmd "wget -q --inet4-only -O /usr/share/keyrings/salt-keyring.gpg  https://repo.saltproject.io/py3/ubuntu/${OSREL}/amd64/latest/salt-archive-keyring.gpg"
+					#logCmd "wget -q --inet4-only -O /opt/so/gpg/SALTSTACK-GPG-KEY.pub https://repo.saltstack.com/py3/ubuntu/18.04/amd64/archive/3003/SALTSTACK-GPG-KEY.pub"
+				  	logCmd "wget -q --inet4-only -O /opt/so/gpg/docker.pub https://download.docker.com/linux/ubuntu/gpg"
+				  	logCmd "wget -q --inet4-only -O /opt/so/gpg/GPG-KEY-WAZUH https://packages.wazuh.com/key/GPG-KEY-WAZUH"
 				fi
 				set_progress_str 7 'Installing salt-master'
 				if [[ ! $is_iso ]]; then
@@ -2176,7 +2193,9 @@ saltify() {
 
 		# Grab the version from the os-release file
 		local ubuntu_version
-		ubuntu_version=$(grep VERSION_ID /etc/os-release | awk -F '[ "]' '{print $2}')
+		# TODO - Check if this works -CW
+		ubuntu_version=`lsb_release -rs`
+		#ubuntu_version=$(grep VERSION_ID /etc/os-release | awk -F '[ "]' '{print $2}')
 		if [ "$OSVER" != "xenial" ]; then local py_ver_url_path="/py3"; else local py_ver_url_path="/apt"; fi
 
 		case "$install_type" in
@@ -2190,8 +2209,12 @@ saltify() {
 			'MANAGER' | 'EVAL' | 'MANAGERSEARCH' | 'STANDALONE' | 'IMPORT' | 'HELIXSENSOR')
 
 				# Add saltstack repo(s)
-				wget -q --inet4-only -O - https://repo.saltstack.com"$py_ver_url_path"/ubuntu/"$ubuntu_version"/amd64/archive/3003/SALTSTACK-GPG-KEY.pub | apt-key add - >> "$setup_log" 2>&1
-				echo "deb http://repo.saltstack.com$py_ver_url_path/ubuntu/$ubuntu_version/amd64/archive/3003 $OSVER main" > /etc/apt/sources.list.d/saltstack.list 2>> "$setup_log"
+				# TODO - Check if this works -CW
+				OSREL=`lsb_release -rs`
+				wget -q --inet4-only -O - "https://repo.saltproject.io/py3/ubuntu/${OSREL}/amd64/latest/salt-archive-keyring.gpg" | apt-key add - >> "$setup_log" 2>&1
+				echo "deb [signed-by=/usr/share/keyrings/salt-archive-keyring.gpg arch=amd64] https://repo.saltproject.io/py3/ubuntu/${OSREL}/amd64/latest ${OSVER} main" > /etc/apt/sources.list.d/salt.list 2>> "${setup_log}"
+				#wget -q --inet4-only -O - https://repo.saltstack.com"$py_ver_url_path"/ubuntu/"$ubuntu_version"/amd64/archive/3003/SALTSTACK-GPG-KEY.pub | apt-key add - >> "$setup_log" 2>&1
+				#echo "deb http://repo.saltstack.com$py_ver_url_path/ubuntu/$ubuntu_version/amd64/archive/3003 $OSVER main" > /etc/apt/sources.list.d/saltstack.list 2>> "$setup_log"
 
 				# Add Docker repo
 				curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add - >> "$setup_log" 2>&1
@@ -2199,7 +2222,11 @@ saltify() {
 
 				# Get gpg keys
 				mkdir -p /opt/so/gpg >> "$setup_log" 2>&1
-				wget -q --inet4-only -O /opt/so/gpg/SALTSTACK-GPG-KEY.pub https://repo.saltstack.com$py_ver_url_path/ubuntu/"$ubuntu_version"/amd64/archive/3003/SALTSTACK-GPG-KEY.pub >> "$setup_log" 2>&1
+				# TODO - Check if this works -CW
+				OSREL=`lsb_release -rs`
+				logCmd "wget -q --inet4-only -O /usr/share/keyrings/salt-keyring.gpg  https://repo.saltproject.io/py3/ubuntu/${OSREL}/amd64/latest/salt-archive-keyring.gpg" 
+				wget -q --inet4-only -O /opt/so/gpg/salt-keyring.gpg "https://repo.saltproject.io/py3/ubuntu/${OSREL}/amd64/latest/salt-archive-keyring.gpg" >> "$setup_log" 2>&1
+				#wget -q --inet4-only -O /opt/so/gpg/SALTSTACK-GPG-KEY.pub https://repo.saltstack.com$py_ver_url_path/ubuntu/"$ubuntu_version"/amd64/archive/3003/SALTSTACK-GPG-KEY.pub >> "$setup_log" 2>&1
 				wget -q --inet4-only -O /opt/so/gpg/docker.pub https://download.docker.com/linux/ubuntu/gpg >> "$setup_log" 2>&1
 				wget -q --inet4-only -O /opt/so/gpg/GPG-KEY-WAZUH https://packages.wazuh.com/key/GPG-KEY-WAZUH >> "$setup_log" 2>&1
 
@@ -2221,9 +2248,13 @@ saltify() {
 				echo "scp the gpg keys and install them from the manager" >> "$setup_log" 2>&1
 				$scpcmd -v -i /root/.ssh/so.key soremote@"$MSRV":/opt/so/gpg/* "$temp_install_dir"/gpg >> "$setup_log" 2>&1
 				echo "Using apt-key add to add SALTSTACK-GPG-KEY.pub and GPG-KEY-WAZUH" >> "$setup_log" 2>&1
-				apt-key add "$temp_install_dir"/gpg/SALTSTACK-GPG-KEY.pub >> "$setup_log" 2>&1
+				# TODO - Check if this works -CW
+				OSREL=`lsb_release -rs`
+				apt-key add "$temp_install_dir"/gpg/salt-keyring.gpg  >> "$setup_log" 2>&1
+				echo "deb [signed-by=/usr/share/keyrings/salt-keyring.gpg arch=amd64] https://repo.saltproject.io/py3/ubuntu/${OSREL}/amd64/latest ${OSVER} main" > /etc/apt/sources.list.d/salt.list 2>> "${setup_log}"
+				#apt-key add "$temp_install_dir"/gpg/SALTSTACK-GPG-KEY.pub >> "$setup_log" 2>&1
+				#echo "deb http://repo.saltstack.com$py_ver_url_path/ubuntu/$ubuntu_version/amd64/archive/3003/ $OSVER main" > /etc/apt/sources.list.d/saltstack.list 2>> "$setup_log"
 				apt-key add "$temp_install_dir"/gpg/GPG-KEY-WAZUH >> "$setup_log" 2>&1
-				echo "deb http://repo.saltstack.com$py_ver_url_path/ubuntu/$ubuntu_version/amd64/archive/3003/ $OSVER main" > /etc/apt/sources.list.d/saltstack.list 2>> "$setup_log"
 				echo "deb https://packages.wazuh.com/3.x/apt/ stable main" > /etc/apt/sources.list.d/wazuh.list 2>> "$setup_log"
 				;;
 		esac
@@ -2696,7 +2727,6 @@ set_management_interface() {
 }
 
 set_node_type() {
-
 	case "$install_type" in
 		'SEARCHNODE' | 'EVAL' | 'MANAGERSEARCH' | 'HEAVYNODE' | 'STANDALONE')
 			NODETYPE='search'
@@ -2711,6 +2741,7 @@ set_node_type() {
 }
 
 set_redirect() {
+
 	case $REDIRECTINFO in
 		'IP')
 			REDIRECTIT="$MAINIP"
@@ -2745,6 +2776,7 @@ set_updates() {
 
 # $5 => (optional) password variable
 so_add_user() {
+
 	local username=$1
 	local uid=$2
 	local gid=$3
@@ -2773,6 +2805,7 @@ steno_pillar() {
 }
 
 update_sudoers_for_testing() {
+
 	if [ -n "$TESTING" ]; then
 		info "Ensuring $INSTALLUSERNAME has password-less sudo access for automated testing purposes."
 		sed -i "s/^$INSTALLUSERNAME   ALL=(ALL)       ALL/$INSTALLUSERNAME   ALL=(ALL) NOPASSWD: ALL/" /etc/sudoers
@@ -2793,9 +2826,10 @@ update_sudoers() {
 }
 
 update_packages() {
+
 	if [ "$OS" = 'centos' ]; then
-	    yum repolist >> /dev/null
-        yum -y update --exclude=salt*,wazuh* >> "$setup_log"
+		yum repolist >> /dev/null
+        	yum -y update --exclude=salt*,wazuh* >> "$setup_log"
 	else
 		retry 50 10 "apt-get -y update" >> "$setup_log" 2>&1 || exit 1
 		retry 50 10 "apt-get -y upgrade" >> "$setup_log" 2>&1 || exit 1
