@@ -20,10 +20,8 @@ def beacon(config):
   if is_enabled:
     zeekstatus = status().lower().split(' ')
     logging.info('zeek_beacon: zeekctl.status: %s' % str(zeekstatus))
-    if 'stopped' in zeekstatus or 'crashed' in zeekstatus or 'error' in zeekstatus or 'error:' in zeekstatus:
-     zeek_restart = True
-    else:
-     zeek_restart = False
+
+    zeek_restart = any(status in zeekstatus for status in ['crashed', 'error', 'stopped']):
 
     __salt__['telegraf.send']('healthcheck zeek_restart=%s' % str(zeek_restart))
     retval.append({'zeek_restart': zeek_restart})
